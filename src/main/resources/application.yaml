@@ -1,0 +1,135 @@
+spring:
+  application:
+    name: spring-ai
+  ai:
+    # 对话 provider 排他开关：deepseek/ openai（默认）（阿里云百炼千问，走 OpenAI 兼容模式）。
+    # 必须显式声明：两个 starter 的自动配置都带 matchIfMissing=true，不声明会同时装配两个
+    # ChatModel Bean，造成注入歧义、应用直接启动失败。
+    # 切换：export CHAT_PROVIDER=openai 后重启进程，无需改代码或重新打包。
+    model:
+      chat: ${CHAT_PROVIDER:openai}
+      embedding: openai
+    deepseek:
+      # 补空默认值，避免切到 openai 时未导出该变量导致占位符解析失败
+      api-key: ${DEEPSEEK_API_KEY:}
+      chat:
+        # 旧名 deepseek-v4-flash 已下线，须用新名
+        model: ${DEEPSEEK_CHAT_MODEL:deepseek-flash}
+    # OpenAI 兼容接口：chat 用于千问，embedding 用于向量化（DeepSeek 无 Embedding 接口，故单独配置）
+    openai:
+      # chat 与 embedding 共用 base-url 与 api-key。
+      # 注意：百炼 Key 与地域绑定，北京 Key 调新加坡 endpoint 会直接 401。
+      # 默认值为百炼公开的 OpenAI 兼容地址；若使用专属业务空间地址，用 BASE_URL 覆盖。
+      base-url: "${BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}"
+      # 同一业务空间下一个 Key 即可调用全部已开通模型；为空时启动即失败（fail-fast）
+      api-key: ${BAILIAN_API_KEY:}
+      # 对话：千问（仅当 spring.ai.model.chat=openai 时生效）
+      chat:
+        options:
+          model: ${CHAT_MODEL:qwen3.8-flash}
+          # 开启千问思考模式：extra-body 会被展平进请求体，最终发出 enable_thinking=true
+          extra-body:
+            enable_thinking: true
+      # 向量化：dimensions 必须与下面 milvus 的 embedding-dimension 一致，否则 Milvus 写入报维度不匹配
+      embedding:
+        options:
+          model: ${EMBEDDING_MODEL:qwen3.7-text-embedding}
+          dimensions: ${EMBEDDING_DIMENSIONS:1024}
+    chat:
+      memory:
+        repository:
+          jdbc:
+            # PostgreSQL 非嵌入式库，默认的 embedded 不会建表，故设为 always（脚本幂等）
+            initialize-schema: always
+    mcp:
+      client:
+        enabled: true
+        name: spring-ai-mcp-client
+        version: 1.0.0
+        # SYNC：适配 Spring MVC 的阻塞式调用
+        type: SYNC
+        request-timeout: 30s
+        # 把 MCP 工具暴露为 ToolCallbackProvider Bean
+        toolcallback:
+          enabled: true
+        # 以 stdio 方式拉起本地 MCP Server（需本机 Node.js 22+）。
+        # Server 清单直接写在这里：stdio 的 JSON 配置文件不做占位符解析，
+        # 密钥只能明文写入，故改用 connections 以便从环境变量读取。
+        stdio:
+          connections:
+            amap-maps:
+              command: npx
+              args:
+                - "-y"
+                - "@amap/amap-maps-mcp-server"
+              env:
+                AMAP_MAPS_API_KEY: ${AMAP_MAPS_API_KEY:}
+    vectorstore:
+      milvus:
+        client:
+          host: ${MILVUS_HOST:localhost}
+          port: ${MILVUS_PORT:19530}
+          # milvus-sdk 2.6.x 即使关闭鉴权也不接受空账密，否则报 "Username cannot be null or blank"
+          username: ${MILVUS_USERNAME:root}
+          password: ${MILVUS_PASSWORD:Milvus}
+        database-name: default
+        collection-name: vector_store
+        # 必须与上面 openai.embedding.options.dimensions 一致
+        embedding-dimension: ${EMBEDDING_DIMENSIONS:1024}
+        index-type: IVF_FLAT
+        metric-type: COSINE
+        # 启动时自动创建 database / collection / index
+        initialize-schema: true
+  # 数据库连接池（连接信息全部来自环境变量，请勿在仓库中提交真实口令）
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:spring-ai}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+  servlet:
+    multipart:
+      # 知识库上传纯文本文件用；Spring Boot 默认单文件上限仅 1MB，稍大的手册会被直接拒绝（413）
+      max-file-size: 5MB
+      max-request-size: 6MB
+
+# JWT 认证：默认密钥仅供本地开发，生产部署必须用 JWT_SECRET 覆盖
+jwt:
+  secret: ${JWT_SECRET:dev-only-jwt-secret-key-please-override-in-production-256bits}
+  expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+
+# AI 长期记忆（spring-ai-agent-utils AutoMemoryTools）
+# 按登录用户隔离：每个用户在根目录下拥有独立子目录，内含各自的 MEMORY.md 索引与记忆正文
+app:
+  ai:
+    memory:
+      # 记忆根目录（相对进程工作目录）。刻意放在源码树之外：记忆是运行期用户数据，
+      # 放在 src/main/resources 下会被打进 jar；java -jar 部署时建议改为可写的绝对路径。
+      dir: ${MEMORY_DIR:data/memory}
+    # RAG 知识库检索参数（接口入参可不传，此时用这里的默认值）
+    rag:
+      # 每次问答召回的片段数：太大易引入噪声，太小可能漏掉关键资料
+      top-k: 4
+      # 相似度阈值（COSINE，0~1）：越小召回越多但噪声越大；调大后命中更精准，
+      # 但过高会导致「知识库明明有资料却检索不到」，可先用 GET /api/ai/rag/documents/search 观察得分再调。
+      similarity-threshold: 0.5
+
+# ORM框架配置
+mybatis-plus:
+  # 实体类扫描路径
+  type-aliases-package: com.example.springai.entity
+  # Mapper XML 文件路径
+  mapper-locations: classpath:mapper/**/*.xml
+  global-config:
+    banner: false
+    db-config:
+      # 主键策略：自增
+      id-type: auto
+      # 逻辑删除字段
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  configuration:
+    # 下划线转驼峰
+    map-underscore-to-camel-case: true
+    # 日志输出
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl

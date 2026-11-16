@@ -1,0 +1,55 @@
+HELP.md
+target/
+.env
+
+### AI 助理本地产物（计划草稿等，不入库） ###
+.codebuddy/
+
+### AI 长期记忆（运行期用户数据，含个人隐私，不入库） ###
+data/
+# 旧版本默认路径，防止历史残留文件被重新加入
+src/main/resources/.agents/memory/
+
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### 操作系统生成文件（不随项目逻辑变化，跨机器也应忽略）###
+.DS_Store
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+### pnpm ###
+# pnpm 的包存储（本机缓存，同时是 node_modules 的硬链接源）：属于本机数据，
+# 内容随本机安装的依赖变化，项目位于独立卷上时会在仓库内生成，不入库。
+.pnpm-store/

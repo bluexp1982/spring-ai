@@ -1,0 +1,853 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* ========== 布局容器 ========== */
+/* 主内容 + 可嵌入的 AI 助手：悬浮模式下 AI 助手 Portal 到 body，此处只有主内容一项；
+   嵌入模式下它作为第二列参与布局，主内容 flex:1 自动收窄（min-width:0 允许收缩）。 */
+.admin-shell {
+  display: flex;
+  height: 100vh;
+}
+
+/* 工作区定位包裹层：为「AI 工作中」遮罩提供定位基准。
+   自身建立层叠上下文（z-index: 0），使遮罩无论内部 z-index 多高都不会盖住
+   右侧 AI 面板（悬浮模式 z-index: 999 / 嵌入模式 z-index: 1）。 */
+.admin-workspace {
+  position: relative;
+  z-index: 0;
+  flex: 1;
+  min-width: 0;
+  height: 100vh;
+  display: flex;
+}
+
+.admin-layout-container {
+  flex: 1;
+  min-width: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+/* 压缩后台内容区的左右内边距，给功能页面更多可用宽度 */
+.ant-pro-layout .ant-pro-layout-content {
+  padding-inline: 8px !important;
+}
+
+/* ========== 左侧菜单栏：底部用户区 ==========
+   ProLayout 把 actionsRender 的返回值放进 .ant-pro-sider-actions，默认只按内容宽度渲染，
+   于是“头像 + 用户名”成了贴着左边的小胶囊，和上方整行高亮的菜单项对不齐。
+   这里把展开态的用户区拉成与菜单项同宽的一整行：左右 4px 外边距 + 16px 内边距，
+   整行可点、悬停整行高亮（悬停底色沿用 ProLayout 自带样式）。 */
+.ant-pro-sider .ant-pro-sider-actions:not(.ant-pro-sider-actions-collapsed) .ant-pro-sider-actions-list {
+  flex: 1;
+  min-width: 0;
+}
+
+.ant-pro-sider .ant-pro-sider-actions:not(.ant-pro-sider-actions-collapsed) .ant-pro-sider-actions-list > .ant-space-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.ant-pro-sider .ant-pro-sider-actions:not(.ant-pro-sider-actions-collapsed) .ant-pro-sider-actions-list-item {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  margin-inline: 4px;
+  padding-block: 0;
+  /* 左右内边距交给下拉触发器，这样行内任意位置（含内边距）都能点开菜单 */
+  padding-inline: 0;
+  font-size: 14px;
+}
+
+/* 下拉触发器撑满整行：与上方菜单项一致，点击行内任意位置都能展开。
+   min-width: 0 让用户名过长时可以被省略号截断，而不是把整行顶开。 */
+.ant-pro-sider .ant-pro-sider-actions:not(.ant-pro-sider-actions-collapsed) .ant-pro-sider-actions-list-item .ant-space {
+  width: 100%;
+  min-width: 0;
+  padding-inline: 16px;
+}
+
+.ant-pro-sider .ant-pro-sider-actions-list-item .ant-space-item {
+  min-width: 0;
+}
+
+.sider-user-name {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+
+/* ========== AI 对话面板（fixed 悬浮于页面右侧，不挤占主内容） ==========
+   宽度由组件通过内联样式写入 --ai-chat-panel-width，支持拖拽左边缘调节。
+   未设置时回退到默认 360px。 */
+.ai-chat-panel {
+  --ai-chat-panel-width: 360px;
+  position: fixed;
+  right: 0;
+  top: 0;
+  width: var(--ai-chat-panel-width);
+  min-width: var(--ai-chat-panel-width);
+  max-width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-left: 1px solid #f0f0f0;
+  box-shadow: -6px 0 24px rgba(0, 0, 0, 0.14);
+  z-index: 999;
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    width: 0;
+    min-width: 0;
+    opacity: 0;
+  }
+  to {
+    width: var(--ai-chat-panel-width);
+    min-width: var(--ai-chat-panel-width);
+    opacity: 1;
+  }
+}
+
+/* 嵌入模式：脱离 fixed 定位，作为布局中的一列固定在右侧，
+   视觉上不再使用阴影，与左侧菜单栏一样是页面结构的一部分 */
+.ai-chat-panel.is-docked {
+  position: relative;
+  top: auto;
+  right: auto;
+  max-width: 100%;
+  flex: 0 0 var(--ai-chat-panel-width);
+  box-shadow: none;
+  z-index: 1;
+}
+
+/* 左侧拖拽调宽手柄：覆盖面板最左侧 6px，拖动时改变面板宽度 */
+.ai-chat-resizer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 1;
+  background: transparent;
+  transition: background 0.2s;
+  user-select: none;
+}
+
+.ai-chat-resizer:hover,
+.ai-chat-resizer:active {
+  background: rgba(22, 119, 255, 0.4);
+}
+
+/* ========== 顶部栏 ========== */
+.ai-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  height: 40px;
+  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  flex-shrink: 0;
+}
+
+.ai-chat-header .ant-typography {
+  color: #fff !important;
+}
+
+/* ========== 消息列表 ========== */
+.ai-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  background: #f5f5f5;
+}
+
+.ai-chat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 4px;
+}
+
+/* ========== 消息气泡 ========== */
+.ai-chat-message {
+  display: flex;
+  margin-bottom: 16px;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.ai-chat-message.message-user {
+  justify-content: flex-end;
+}
+
+.ai-chat-message.message-assistant {
+  justify-content: flex-start;
+}
+
+.ai-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #f0f5ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid #e6f0ff;
+}
+
+.message-bubble {
+  display: flex;
+  gap: 6px;
+  max-width: 80%;
+  align-items: flex-start;
+}
+
+.message-user .message-bubble {
+  flex-direction: row-reverse;
+}
+
+.user-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #1677ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.message-text {
+  padding: 8px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+  /* 允许气泡收缩到内容最小宽度以下，避免超宽表格把 AI 气泡撑破 */
+  min-width: 0;
+}
+
+.message-user .message-text {
+  background: #1677ff;
+  color: #fff;
+  border-top-right-radius: 4px;
+  /* 用户输入按纯文本展示，保留 Shift+Enter 的手动换行 */
+  white-space: pre-wrap;
+}
+
+.message-assistant .message-text {
+  background: #fff;
+  color: #1f1f1f;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  border-top-left-radius: 4px;
+  /* AI 回复交给 Markdown 控制排版。这里不能用 pre-wrap，
+     否则 Markdown 块级元素之间会多出空白 */
+  white-space: normal;
+}
+
+/* ========== AI 回复的 Markdown 排版 ========== */
+
+/* 气泡上下不需要多余留白 */
+.message-assistant .message-text > :first-child {
+  margin-top: 0;
+}
+
+.message-assistant .message-text > :last-child {
+  margin-bottom: 0;
+}
+
+.message-assistant .message-text p {
+  margin: 0 0 8px;
+}
+
+.message-assistant .message-text h1,
+.message-assistant .message-text h2,
+.message-assistant .message-text h3,
+.message-assistant .message-text h4,
+.message-assistant .message-text h5,
+.message-assistant .message-text h6 {
+  margin: 12px 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.message-assistant .message-text ul,
+.message-assistant .message-text ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+.message-assistant .message-text li {
+  margin-bottom: 2px;
+}
+
+/* 列表项内的段落不再叠加下边距，否则列表项间距会被撑开 */
+.message-assistant .message-text li > p {
+  margin-bottom: 0;
+}
+
+.message-assistant .message-text strong {
+  font-weight: 600;
+}
+
+.message-assistant .message-text em {
+  font-style: italic;
+}
+
+.message-assistant .message-text a {
+  color: #1677ff;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.message-assistant .message-text a:hover {
+  text-decoration: underline;
+}
+
+/* 行内代码 */
+.message-assistant .message-text code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #f2f3f5;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 12px;
+}
+
+/* 代码块：不引入语法高亮，仅等宽字体 + 灰底 + 横向滚动 */
+.message-assistant .message-text pre {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #f6f7f9;
+  overflow-x: auto;
+}
+
+.message-assistant .message-text pre code {
+  padding: 0;
+  background: transparent;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre;
+}
+
+.message-assistant .message-text blockquote {
+  margin: 0 0 8px;
+  padding: 2px 0 2px 10px;
+  border-left: 3px solid #dfe2e5;
+  color: #6b7280;
+}
+
+.message-assistant .message-text hr {
+  margin: 10px 0;
+  border: none;
+  border-top: 1px solid #ececec;
+}
+
+/* GFM 表格：窄侧栏（默认 360px，最小 300px）里放不下时由容器横向滚动 */
+.markdown-table-wrap {
+  margin: 0 0 8px;
+  overflow-x: auto;
+}
+
+.message-assistant .message-text .markdown-table-wrap > :last-child {
+  margin-bottom: 0;
+}
+
+.message-assistant .message-text table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+
+.message-assistant .message-text th,
+.message-assistant .message-text td {
+  padding: 5px 8px;
+  border: 1px solid #e8e8e8;
+  text-align: left;
+  vertical-align: top;
+  /* 列过窄时不再压缩，交给外层容器横向滚动 */
+  min-width: 56px;
+  word-break: break-word;
+}
+
+.message-assistant .message-text th {
+  background: #fafafa;
+  font-weight: 600;
+}
+
+.message-assistant .message-text tbody tr:nth-child(even) td {
+  background: #fcfcfc;
+}
+
+/* ========== Mermaid 图表 ========== */
+.mermaid-diagram {
+  display: flex;
+  justify-content: center;
+  margin: 12px 0;
+  overflow-x: auto;
+}
+
+.mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-loading {
+  padding: 12px 16px;
+  color: #999;
+  font-size: 12px;
+  font-style: italic;
+  background: #fafafa;
+  border-radius: 6px;
+  border: 1px dashed #d9d9d9;
+  text-align: center;
+  margin: 8px 0;
+}
+
+/* ========== 打字动画 ========== */
+.typing-dot {
+  display: inline-block;
+  font-size: 24px;
+  font-weight: bold;
+  line-height: 1;
+  animation: blink 1.4s infinite;
+  color: #1677ff;
+}
+
+@keyframes blink {
+  0%, 80%, 100% {
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+/* ========== 输入区域 ========== */
+.ai-chat-input-area {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid #f0f0f0;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.ai-chat-input {
+  flex: 1;
+  border-radius: 8px !important;
+}
+
+.ai-chat-input textarea {
+  font-size: 13px !important;
+  resize: none;
+}
+
+.ai-send-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50% !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0 !important;
+}
+
+/* ========== 展开按钮（面板收起时，Portal 到 body） ========== */
+.ai-chat-trigger {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 8px 0 0 8px;
+  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: -2px 0 8px rgba(22, 119, 255, 0.3);
+  z-index: 1000;
+  transition: transform 0.2s;
+}
+
+.ai-chat-trigger:hover {
+  transform: translateY(-50%) scale(1.05);
+}
+
+/* ========== 知识库问答：模式切换条 ========== */
+.ai-chat-mode-bar {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fff;
+}
+
+/* 无状态提示：字号压到最小但保持可读，避免在窄侧栏里换行过多 */
+.ai-chat-mode-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px !important;
+  line-height: 1.5;
+}
+
+/* ========== 知识库问答：引用来源 ========== */
+
+/* 助手气泡默认是横向 flex，正文与来源会被排成同一行的两个子项，
+   来源块会被挤到只剩几像素宽而逐字换行成竖条；助手气泡内没有 user-icon，
+   改成纵向排列（正文在上、来源在下）即可，用户气泡不受影响。 */
+.message-assistant .message-bubble {
+  flex-direction: column;
+}
+
+.ai-chat-sources {
+  /* 纵向布局下 100% 会解析为同一容器内 message-text 的宽度，两块宽度自然对齐 */
+  width: 100%;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #e8e8e8;
+}
+
+/* 收紧 Collapse 的内边距，避免在 300px 窄侧栏里层层缩进后正文几乎无处可放 */
+.ai-chat-sources .ant-collapse-header {
+  padding: 0 !important;
+}
+
+.ai-chat-sources .ant-collapse-content-box {
+  padding: 8px 0 0 !important;
+}
+
+/* ========== AI 助手工作中：左侧工作区五彩霞光遮罩 ==========
+   AI 助手生成回复期间，整个左侧工作区（含菜单栏）被一层五彩霞光笼罩，
+   霞光顺时针围绕工作区旋转飘动，底部居中浮现「正在工作中」悬浮胶囊。 */
+
+/* 胶囊彩色描边用的可动画角度：注册成 <angle> 后浏览器才能对自定义属性做插值，
+   从而让 conic-gradient 的起始角度连续旋转；旧浏览器降级为静态描边 */
+@property --agent-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+/* 遮罩本体：铺满工作区并接收指针事件。
+   遮罩内部不是滚动容器（overflow: hidden），滚轮事件不会传递到左侧可滚动的
+   内容区（它是兄弟节点而非祖先），因此生成期间工作区既不可点击也不可滚动。 */
+.agent-working-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  overflow: hidden;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+  /* 七彩光谱：红 → 橙 → 黄 → 绿 → 青 → 蓝 → 靛 → 靛紫 → 深紫 → 紫罗兰 → 紫 → 紫红 → 品红。
+     蓝之后连着十档紫系（16 档里占 10 档，约 62%），其中紫罗兰与紫各重复一次用来加宽色带，
+     紫色成为整圈的主色，红橙黄绿青只在剩余一小段里收尾。
+     定义在遮罩根节点上，霞光层与胶囊描边复用同一组颜色，重复拼接即可得到多周期色环。 */
+  --agent-rainbow: #ff3b30, #ff9500, #ffd60a, #34c759, #00c7be, #2f6bff, #4f46e5, #6366f1,
+    #7c3aed, #8b5cf6, #8b5cf6, #a855f7, #a855f7, #c026d3, #d946ef, #e879f9;
+  animation: agentOverlayIn 0.3s ease;
+}
+
+@keyframes agentOverlayIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 霞光与洗白层的承载层：以「中间挖空、向外虚化」的遮罩裁切，
+   使工作区中部保持完整清晰，只在四周形成一圈流动的霞光晕。
+   两个方向的 linear-gradient 取并集（默认 add）：横竖两侧为实、中部为透，
+   中间那段渐变即「从挖空边缘向外」的虚化过渡。
+   底部胶囊不放在这一层里，因此不会被挖空遮罩一起裁掉。 */
+.agent-working-aurora-wrap {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  /* 兜底遮罩：万一环境不支持下面的 SVG 遮罩，退化为横竖两条线性渐变拼出的矩形环 */
+  -webkit-mask-image:
+    linear-gradient(to right, #000 0 4%, transparent 10%, transparent 90%, #000 96% 100%),
+    linear-gradient(to bottom, #000 0 4%, transparent 10%, transparent 90%, #000 96% 100%);
+  mask-image:
+    linear-gradient(to right, #000 0 4%, transparent 10%, transparent 90%, #000 96% 100%),
+    linear-gradient(to bottom, #000 0 4%, transparent 10%, transparent 90%, #000 96% 100%);
+  /* 正式遮罩：一个做了高斯模糊的「圆角矩形环」，只保留透明度通道。
+     相比横竖两条渐变叠加，单个二维形状有两个好处：
+     1. 四角不会因为两次透明叠加而变浓（此前左下/左上角看起来比边更厚就是这个原因）；
+     2. 挖空边缘的 alpha 走高斯曲线，过渡平滑自然，没有线性渐变的"起停感"。
+     挖空区为 5%~95%，alpha 在 5% 处为 0.5、到 10% 左右基本消失。
+     调参：改 path 里的 5 / 95（挖空大小）与 stdDeviation（过渡宽度）。 */
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%20preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter%20id='f'%3E%3CfeGaussianBlur%20stdDeviation='2.2'/%3E%3C/filter%3E%3C/defs%3E%3Cpath%20d='M-100%20-100H200V200H-100Z%20M8%205H92A3%203%200%200%201%2095%208V92A3%203%200%200%201%2092%2095H8A3%203%200%200%201%205%2092V8A3%203%200%200%201%208%205Z'%20fill='%23fff'%20fill-rule='evenodd'%20filter='url(%23f)'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%20preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter%20id='f'%3E%3CfeGaussianBlur%20stdDeviation='2.2'/%3E%3C/filter%3E%3C/defs%3E%3Cpath%20d='M-100%20-100H200V200H-100Z%20M8%205H92A3%203%200%200%201%2095%208V92A3%203%200%200%201%2092%2095H8A3%203%200%200%201%205%2092V8A3%203%200%200%201%208%205Z'%20fill='%23fff'%20fill-rule='evenodd'%20filter='url(%23f)'/%3E%3C/svg%3E");
+  -webkit-mask-composite: source-over;
+  mask-composite: add;
+}
+
+/* 霞光层：超大尺寸的 conic-gradient 被大半径模糊后化为柔和光晕。
+   尺寸取容器 180% 且为圆形，旋转时不会露出边缘；
+   旋转用 transform（合成层）而非重绘渐变，开销更低。 */
+.agent-working-aurora {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 180%;
+  height: 180%;
+  border-radius: 50%;
+  pointer-events: none;
+  will-change: transform;
+  transform: translate(-50%, -50%);
+}
+
+/* 主霞光：七彩光谱绕三圈（色带更密、更窄，转动时色带位移一眼可见），
+   blur 半径压到与色带宽度同量级，避免过度模糊把流动感抹平 */
+.agent-working-aurora-1 {
+  background: conic-gradient(
+    from 0deg,
+    var(--agent-rainbow),
+    var(--agent-rainbow),
+    var(--agent-rainbow),
+    #ff3b30
+  );
+  filter: blur(46px);
+  opacity: 0.55;
+  animation: agentAuroraSpin 9s linear infinite;
+}
+
+/* 副霞光：七彩绕四圈、起始角错开、blur 更大、转速更慢，
+   与主霞光同向叠加后色彩层次更丰富，两层速度差让流向持续错动 */
+.agent-working-aurora-2 {
+  background: conic-gradient(
+    from 180deg,
+    var(--agent-rainbow),
+    var(--agent-rainbow),
+    var(--agent-rainbow),
+    var(--agent-rainbow),
+    #ff3b30
+  );
+  filter: blur(68px);
+  opacity: 0.35;
+  animation: agentAuroraSpin 14s linear infinite;
+}
+
+/* rotate 正值 = 顺时针 */
+@keyframes agentAuroraSpin {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+/* 毛玻璃洗白层：压暗被遮罩的内容对比度，让工作区「安静」下来，
+   同时保留霞光透出的淡淡色彩。backdrop-filter 会连同下方的霞光层一起采样。 */
+.agent-working-veil {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.32);
+  -webkit-backdrop-filter: blur(2px) saturate(1.15);
+  backdrop-filter: blur(2px) saturate(1.15);
+}
+
+/* ========== 底部悬浮胶囊 ========== */
+.agent-working-pill {
+  position: absolute;
+  left: 50%;
+  bottom: 44px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 48px);
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow:
+    0 10px 30px rgba(99, 102, 241, 0.22),
+    0 2px 8px rgba(236, 72, 153, 0.12);
+  font-size: 13px;
+  line-height: 1.4;
+  color: #1f2937;
+  white-space: nowrap;
+  animation: agentPillIn 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 胶囊彩色描边：用 conic-gradient + mask 裁出 1px 渐变环，
+   并让 --agent-angle 缓慢自转，形成环绕胶囊流动的霞光细边 */
+.agent-working-pill::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--agent-angle),
+    var(--agent-rainbow),
+    #ff3b30
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.75;
+  animation: agentAngleSpin 6s linear infinite;
+}
+
+@keyframes agentAngleSpin {
+  to {
+    --agent-angle: 360deg;
+  }
+}
+
+@keyframes agentPillIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+.agent-working-spinner {
+  font-size: 15px;
+  color: #6366f1;
+  flex-shrink: 0;
+}
+
+.agent-working-text {
+  flex-shrink: 0;
+}
+
+/* 动态省略号 */
+.agent-working-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.agent-working-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #a855f7;
+  animation: agentDotPulse 1.2s ease-in-out infinite;
+}
+
+.agent-working-dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.agent-working-dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes agentDotPulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+.agent-working-divider {
+  width: 1px;
+  height: 14px;
+  background: #e5e7eb;
+  flex-shrink: 0;
+}
+
+/* 停止按钮：与 AI 面板内的停止按钮语义一致，点击立即中断本次生成 */
+.agent-working-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.agent-working-stop:hover {
+  background: rgba(239, 68, 68, 0.16);
+  transform: scale(1.04);
+}
+
+.agent-working-stop:active {
+  transform: scale(0.97);
+}
+
+.agent-working-stop:focus-visible {
+  outline: 2px solid rgba(99, 102, 241, 0.6);
+  outline-offset: 2px;
+}
+
+/* 窄屏下收紧胶囊留白，保证文案不溢出工作区 */
+@media (max-width: 640px) {
+  .agent-working-pill {
+    bottom: 24px;
+    gap: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+}
+
+/* 尊重系统「减少动态效果」：只关闭遮罩淡入与胶囊滑入这类入场动画。
+   注意：霞光的顺时针流动是这个效果的核心表达，此处刻意不做降级——
+   若宿主机把 prefers-reduced-motion 置为 reduce 就整体停转，用户将看不到该效果。 */
+@media (prefers-reduced-motion: reduce) {
+  .agent-working-overlay,
+  .agent-working-pill {
+    animation: none;
+  }
+}
